@@ -1,6 +1,7 @@
 #include <msp430.h> 
 #include <inttypes.h>
 
+#include <font5x7.h>
 
 #define ROWS (7)
 #define COLUMNS (111)
@@ -22,8 +23,12 @@ static const uint8_t cathodeBit[] = {BIT3, BIT4, BIT5, BIT6};
 #define TIMER_FLUSH_TICK (0xFFFF - (TIMER_1USEC*700))//800us
 #define DELAY_10US (TIMER_1USEC * 10)//10us
 
-volatile uint8_t currentPos = 0;
-uint8_t currentCathode = 0;
+volatile uint8_t currentShowPos = 0;
+volatile uint8_t startShowPos = 0;
+volatile uint8_t currentCathode = 0;
+
+volatile uint8_t currentFillPos = 0;
+volatile uint8_t startFillPos = 0;
 
 uint8_t data[COLUMNS] = {0};
 
@@ -87,8 +92,6 @@ inline void nextRow(uint8_t pos)
 }
 
 
-
-
 void main(void)
 {
    WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
@@ -96,8 +99,21 @@ void main(void)
     BCSCTL1 = CALBC1_16MHZ;
 	DCOCTL = CALDCO_16MHZ;
 
+	P1SEL |= BIT1 + BIT2 ; // P1.1 = RXD, P1.2=TXD
+	P1SEL2 |= BIT1 + BIT2 ; // P1.1 = RXD, P1.2=TXD
+	P1DIR |= BIT0;
+	P1OUT &= ~BIT0;
 
+    /*Baud rate 38400*/
+    UCA0CTL0 = 0x00;
+    UCA0CTL1 = UCSSEL1|UCSWRST;
+    /*See table 15-4*/
+    UCA0BR0 = (416-256);
+    UCA0BR1 = 416/256;
+    UCA0MCTL = UCBRS2|UCBRS1;
+    UCA0CTL1 &= ~UCSWRST;
 
+    IE2 |= UCA0TXIE + UCA0RXIE;
 
     initDisplay();
 
@@ -107,33 +123,76 @@ void main(void)
     }
 }
 
-
-
 void __attribute__ ((interrupt(TIMER0_A1_VECTOR))) TAIFTick(void)
 {
     if (TA0IV & TA0IV_TAIFG)
     {
-        if (currentPos == 0)
+        if (currentShowPos == startShowPos)
         {
             flushDisplay();
             TA0R = TIMER_FLUSH_TICK;
         }
         else
         {
-            nextRow(currentPos - 1);
+            nextRow(currentShowPos - 1);
             TA0R = TIMER_NORMAL_TICK;
         }
-        currentPos++;
-        if (currentPos > COLUMNS)
+        currentShowPos++;
+        if (currentShowPos > COLUMNS)
         {
-            currentPos = 0;
+            currentShowPos = startShowPos;
         }
     }
 }
 
-void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) CC0Tick(void)
+inline void ClearData()
 {
+    for (uint8_t i = 0; i < COLUMNS; ++i)
+    {
+        data[i] = 0;
+    }
+}
 
+
+void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) TxEnd(void)
+{
+    if (IFG2&UCA0TXIFG)
+    {
+
+        P1OUT &= ~BIT0;
+    }
+}
+
+void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) RxGet(void)
+{
+    if (IFG2&UCA0RXIFG)
+    {
+        uint8_t symbol = UCA0RXBUF;
+
+        if ((symbol == 0x0A) || (symbol == 0x0D))
+        {
+            ClearData();
+            startShowPos = 0;
+            currentShowPos = 0;
+            startFillPos = 0;
+            currentFillPos = 0;
+        }
+        else if (symbol >= 0x20)
+        {
+            for (uint8_t i = 0; i <= SYSTEMRUS5x7_WIDTH; ++i)
+            {
+                //Fill 5 columns from array plus one space column.
+                data[currentFillPos++] = (i == SYSTEMRUS5x7_WIDTH)? 0 : System5x7_CP1251[(unsigned int)(symbol - 0x20)* SYSTEMRUS5x7_WIDTH + i];
+                if (currentFillPos >= COLUMNS)
+                {
+                    currentFillPos = 0;
+                    startShowPos++;
+                }
+            }
+        }
+        UCA0TXBUF = symbol;
+        P1OUT |= BIT0;
+    }
 
 }
 
