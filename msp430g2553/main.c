@@ -13,15 +13,15 @@
 #define CATHODE_DIR (P1DIR)
 #define CATHODE_OUT (P1OUT)
 
-static const uint8_t cathodeBit[] = {BIT3, BIT4, BIT5, BIT6};
+static const uint8_t cathodeBit[] = {BIT0, BIT6, BIT5, BIT4};
 
-#define CATHODE_MASK (BIT3 + BIT4 + BIT5 + BIT6)
+#define CATHODE_MASK (BIT0 + BIT4 + BIT5 + BIT6)
 #define CATHODE_NUMBER (4)
 
 #define TIMER_1USEC 16
-#define TIMER_NORMAL_TICK (0xFFFF - (TIMER_1USEC*158))//170us
+#define TIMER_NORMAL_TICK (0xFFFF - (TIMER_1USEC*200))//170us
 #define TIMER_FLUSH_TICK (0xFFFF - (TIMER_1USEC*700))//800us
-#define DELAY_10US (TIMER_1USEC * 10)//10us
+#define DELAY_1US (TIMER_1USEC)//10us
 
 volatile uint8_t currentShowPos = 0;
 volatile uint8_t startShowPos = 0;
@@ -38,7 +38,7 @@ void TimerStart()
 {
     TA0R = TIMER_NORMAL_TICK;
     //TA0CCR0 = TIMER_NORMAL_TICK;
-    TA0CTL |= TASSEL1 + MC1 +TAIE + TAIFG;
+    TA0CTL |= TASSEL1 + MC1 +TAIE + TAIFG;// + ID1 + ID0;
 }
 
 void TimerStop()
@@ -48,9 +48,10 @@ void TimerStop()
 
 void initDisplay()
 {
-    CATHODE_DIR |= CATHODE_MASK;
-    CATHODE_OUT &= ~CATHODE_MASK;
+    CATHODE_DIR |= CATHODE_MASK + BIT7;
+    CATHODE_OUT &= ~(CATHODE_MASK + BIT7);
     ANODE_DIR |= ANODE_MASK;
+    //P2SEL2 |= BIT6;
     ANODE_OUT &= ~ANODE_MASK;
 
     TimerStart();
@@ -59,6 +60,10 @@ void initDisplay()
 inline void sendAnodes(uint8_t data)
 {
     ANODE_OUT = data & ANODE_MASK;
+    if (data & BIT6)
+    {CATHODE_OUT |= BIT7;}
+    else
+    {CATHODE_OUT &= ~BIT7;}
 }
 
 inline void sendCathode(uint8_t cathode)
@@ -80,17 +85,36 @@ inline void flushDisplay()
 
 inline void nextRow(uint8_t pos)
 {
-    currentCathode++;
+    sendAnodes(0);
+    __delay_cycles(DELAY_1US*40);//need to wait 10us
+    /*currentCathode++;
     if (currentCathode >= CATHODE_NUMBER)
     {
         currentCathode = 1;
-    }
-    sendCathode(currentCathode);
-    __delay_cycles(DELAY_10US);//need to wait 10us
+    }*/
+    sendCathode((pos % 3) + 1);
+    __delay_cycles(DELAY_1US*20);//need to wait 10us
     sendAnodes(data[pos]);
 
 }
 
+inline void ClearData()
+{
+    for (uint8_t i = 0; i < COLUMNS; ++i)
+    {
+        data[i] = 0;
+    }
+}
+
+
+inline void clearDisplay()
+{
+    ClearData();
+   startShowPos = 0;
+   currentShowPos = 0;
+   startFillPos = 0;
+   currentFillPos = 0;
+}
 
 void main(void)
 {
@@ -98,11 +122,13 @@ void main(void)
 	
     BCSCTL1 = CALBC1_16MHZ;
 	DCOCTL = CALDCO_16MHZ;
+	//BCSCTL2 = DIVS1 + DIVS0;
 
 	P1SEL |= BIT1 + BIT2 ; // P1.1 = RXD, P1.2=TXD
 	P1SEL2 |= BIT1 + BIT2 ; // P1.1 = RXD, P1.2=TXD
-	P1DIR |= BIT0;
-	P1OUT &= ~BIT0;
+
+	P1OUT |= BIT3;
+	P1REN |= BIT3;
 
     /*Baud rate 38400*/
     UCA0CTL0 = 0x00;
@@ -114,6 +140,8 @@ void main(void)
     UCA0CTL1 &= ~UCSWRST;
 
     IE2 |= UCA0TXIE + UCA0RXIE;
+
+    ClearData();
 
     initDisplay();
 
@@ -127,7 +155,11 @@ void __attribute__ ((interrupt(TIMER0_A1_VECTOR))) TAIFTick(void)
 {
     if (TA0IV & TA0IV_TAIFG)
     {
-        if (currentShowPos == startShowPos)
+        if (!(P1IN & BIT3))
+        {
+            clearDisplay();
+        }
+        if (currentShowPos == 0)
         {
             flushDisplay();
             TA0R = TIMER_FLUSH_TICK;
@@ -140,18 +172,12 @@ void __attribute__ ((interrupt(TIMER0_A1_VECTOR))) TAIFTick(void)
         currentShowPos++;
         if (currentShowPos > COLUMNS)
         {
-            currentShowPos = startShowPos;
+            currentShowPos = 0;
         }
     }
 }
 
-inline void ClearData()
-{
-    for (uint8_t i = 0; i < COLUMNS; ++i)
-    {
-        data[i] = 0;
-    }
-}
+
 
 
 void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) TxEnd(void)
@@ -159,7 +185,6 @@ void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) TxEnd(void)
     if (IFG2&UCA0TXIFG)
     {
 
-        P1OUT &= ~BIT0;
     }
 }
 
@@ -171,11 +196,7 @@ void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) RxGet(void)
 
         if ((symbol == 0x0A) || (symbol == 0x0D))
         {
-            ClearData();
-            startShowPos = 0;
-            currentShowPos = 0;
-            startFillPos = 0;
-            currentFillPos = 0;
+            clearDisplay();
         }
         else if (symbol >= 0x20)
         {
@@ -191,8 +212,7 @@ void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) RxGet(void)
             }
         }
         UCA0TXBUF = symbol;
-        P1OUT |= BIT0;
-    }
+       }
 
 }
 
