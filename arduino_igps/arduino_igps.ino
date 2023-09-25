@@ -6,7 +6,7 @@
 static const uint8_t cathodeBit[] = { 1 << PD4, 1 << PD5, 1 << PD6, 1 << PD7 };
 
 #define CATHODE_OUT (PORTD)
-#define CATHODE_MASK (1 << PD4) | (1 << PD5) | (1 << PD6) | (1 << PD7)
+#define CATHODE_MASK ((1 << PD4) | (1 << PD5) | (1 << PD6) | (1 << PD7))
 #define CATHODE_NUMBER (4)
 
 #define TIMER_1USEC 16
@@ -34,7 +34,7 @@ void setup(void) {
   DDRC |= 0x2F;
   DDRB |= (1 << PB3) | (1 << PB5) | (1<<PB4);
   //Set cathodes to output
-  DDRD |= 0x7C;
+  DDRD |= 0xFC;
   Serial.begin(38400);
   while (!Serial) {
     ;  // wait for serial port to connect. Needed for native USB port only
