@@ -3,10 +3,10 @@
 #define ROWS (7)
 #define COLUMNS (111)
 
-static const uint8_t cathodeBit[] = { 1 << PD4, 1 << PD5, 1 << PD6, 1 << PD7 };
+static const uint8_t cathodeBit[] = { 1 << PD4, 1 << PD5, 1 << PD7, 1 << PD6 };
 
 #define CATHODE_OUT (PORTD)
-#define CATHODE_MASK ((1 << PD4) | (1 << PD5) | (1 << PD6) | (1 << PD7))
+#define CATHODE_MASK ((1 << PD4) | (1 << PD5) | (1 << PD7) | (1 << PD6))
 #define CATHODE_NUMBER (4)
 
 #define TIMER_1USEC 16
@@ -31,7 +31,7 @@ inline void __delay_cycles(uint8_t clocks) {
 
 void setup(void) {
   //Set anodes to output
-  DDRC |= 0x2F;
+  DDRC |= 0x3F;
   DDRB |= (1 << PB3) | (1 << PB5) | (1<<PB4);
   //Set cathodes to output
   DDRD |= 0xFC;
@@ -71,14 +71,14 @@ void loop() {
 inline void sendAnodes(uint8_t data) {
   PORTC &= ~0x3F;
   PORTB &= ~(1 << PB5);
-  PORTC |= data & 0x2F;
-  PORTB |= (data >> 1) & 0x20;
+  PORTC |= (data >> 1) & 0x3F;
+  PORTB |= (data << 5) & 0x20;
 }
 
 inline void sendCathode(uint8_t cathode) {
-  CATHODE_OUT &= ~CATHODE_MASK;
+  CATHODE_OUT |= CATHODE_MASK;
   if (cathode < CATHODE_NUMBER) {
-    CATHODE_OUT |= cathodeBit[cathode];
+    CATHODE_OUT &= ~cathodeBit[cathode];
   }
 }
 
@@ -92,6 +92,7 @@ inline void nextRow(uint8_t pos) {
   __delay_cycles(DELAY_1US * 40);  //need to wait 10us
   sendCathode((pos % 3) + 1);
   __delay_cycles(DELAY_1US * 20);  //need to wait 10us
+  //sendAnodes((pos % 2)? 0xAA : 0x55);
   sendAnodes(data[pos]);
 }
 
