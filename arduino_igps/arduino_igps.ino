@@ -1,17 +1,45 @@
 #include "font5x7.h"
 
 #define ROWS (7)
-#define COLUMNS (111)
 
-static const uint8_t cathodeBit[] = { 1 << PD4, 1 << PD5, 1 << PD7, 1 << PD6 };
+
+//#define IGPS_111
+//#define IGPS_222
+#define IGV1
+
+#define DEBUG_PATTERN
+
+#if defined(IGPS_111)
+  static const uint8_t cathodeBit[] = { 1 << PD4, 1 << PD5, 1 << PD7, 1 << PD6 };//IGPS1-111/7
+  #define CATHODE_NUMBER (4)
+  #define COLUMNS (111)
+  #define DELAY_NORM (200)
+  #define DELAY_RESTART (700)
+  #define CATHODE_GAP (20)
+#elif defined(IGPS_222)
+  static const uint8_t cathodeBit[] = { 1 << PD7, 1 << PD4, 1 << PD3, 1 << PD2, 1 << PD5, 1 << PD6 };//IGPS2-222/7
+  #define CATHODE_NUMBER (6)
+  #define COLUMNS (222)
+  #define DELAY_NORM (35)
+  #define DELAY_RESTART (350)
+  #define CATHODE_GAP (5)
+#else
+  static const uint8_t cathodeBit[] = { 1 << PD2, 1 << PD5, 1 << PD4, 1 << PD3 };//IGV1-16/5x7
+  #define CATHODE_NUMBER (4)
+  #define COLUMNS (111)
+  #define DELAY_NORM (200)
+  #define DELAY_RESTART (700)
+  #define CATHODE_GAP (20)
+#endif
+
 
 #define CATHODE_OUT (PORTD)
-#define CATHODE_MASK ((1 << PD4) | (1 << PD5) | (1 << PD7) | (1 << PD6))
-#define CATHODE_NUMBER (4)
+#define CATHODE_MASK ((1 << PD2) |(1 << PD3) |(1 << PD4) | (1 << PD5) | (1 << PD6) | (1 << PD7))
+
 
 #define TIMER_1USEC 16
-#define TIMER_NORMAL_TICK (0xFFFF - (TIMER_1USEC * 200))  //170us
-#define TIMER_FLUSH_TICK (0xFFFF - (TIMER_1USEC * 700))   //800us
+#define TIMER_NORMAL_TICK (0xFFFF - (TIMER_1USEC * DELAY_NORM))  //170us
+#define TIMER_FLUSH_TICK (0xFFFF - (TIMER_1USEC * DELAY_RESTART))   //800us
 #define DELAY_1US (TIMER_1USEC)                           //10us
 
 volatile uint8_t currentShowPos = 0;
@@ -89,11 +117,14 @@ inline void flushDisplay() {
 
 inline void nextRow(uint8_t pos) {
   sendAnodes(0);
-  __delay_cycles(DELAY_1US * 40);  //need to wait 10us
-  sendCathode((pos % 3) + 1);
-  __delay_cycles(DELAY_1US * 20);  //need to wait 10us
-  //sendAnodes((pos % 2)? 0xAA : 0x55);
+  __delay_cycles(DELAY_1US * CATHODE_GAP * 2);  //need to wait 10us
+  sendCathode((pos % (CATHODE_NUMBER-1)) + 1);
+  __delay_cycles(DELAY_1US * CATHODE_GAP);  //need to wait 10us
+#if defined(DEBUG_PATTERN)
+  sendAnodes((pos % 2)? 0xAA : 0x55);
+#else
   sendAnodes(data[pos]);
+#endif
 }
 
 inline void ClearData() {

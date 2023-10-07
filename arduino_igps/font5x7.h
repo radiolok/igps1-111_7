@@ -40,7 +40,7 @@
 #define SYSTEMRUS5x7_HEIGHT 7UL
 
 
-static const uint8_t System5x7_CP1251[]  = {
+static const uint8_t System5x7_CP1251[] PROGMEM  = {
     // font data
     0x00, 0x00, 0x00, 0x00, 0x00,// (space) 0x20
     0x00, 0x00, 0x5F, 0x00, 0x00,// !   0x21
